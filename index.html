@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>中央競馬 A/B軸スコアリング</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="競馬スコア">
+
+<style>
+body { font-family: sans-serif; background:#fafafa; padding:10px; }
+textarea { width:100%; height:120px; margin-bottom:6px; }
+button { width:100%; padding:14px; font-size:18px; margin-bottom:6px; border-radius:10px; }
+
+.race {
+  padding:10px;
+  margin-bottom:10px;
+  border-radius:8px;
+  font-weight:bold;
+  box-shadow:0 2px 4px rgba(0,0,0,0.1);
+}
+
+.a-axis { background:#ffdddd; border-left:6px solid #e60000; }
+.b-axis { background:#fff0cc; border-left:6px solid #ff9900; }
+.skip   { background:#f0f0f0; color:#999; }
+
+small { font-weight:normal; display:block; margin-top:4px; }
+</style>
+</head>
+
+<body>
+
+<textarea id="odds" placeholder="① 単勝・複勝データ貼り付け"></textarea>
+<textarea id="wide" placeholder="② ワイドデータ（任意）"></textarea>
+
+<button onclick="calculate()">スコア計算</button>
+<button onclick="clearAll()">クリア</button>
+
+<div id="result"></div>
+
+<hr>
+
+<input type="number" id="hit" placeholder="的中払戻額">
+<button onclick="record()">🎯 的中記録</button>
+<button onclick="summary()">📊 今月の成績</button>
+
+<script>
+function clearAll(){
+  odds.value=""; wide.value=""; result.innerHTML="";
+}
+
+function calculate(){
+  const lines = odds.value.split("\n");
+  let horses=[];
+
+  lines.forEach(l=>{
+    const m=l.match(/^(\d+)\s+(\d+)\s+.+\s+([\d.]+)\s+([\d.]+)/);
+    if(m){
+      horses.push({
+        num:m[2],
+        win:+m[3],
+        place:+m[4],
+        score:0
+      });
+    }
+  });
+
+  if(horses.length===0){
+    result.innerHTML="データを認識できません";
+    return;
+  }
+
+  horses.sort((a,b)=>a.win-b.win);
+  horses.forEach((h,i)=>h.pop=i+1);
+
+  if(horses[2] && horses[2].win >= horses[1].win*1.8){
+    horses[0].score+=40;
+    horses[1].score+=38;
+  }
+
+  horses.forEach(h=>{
+    if(h.place<=1.3) h.score+=30;
+    else if(h.place<=1.6) h.score+=22;
+    else if(h.place<=2.1) h.score+=18;
+
+    const bal=h.win*h.place;
+    if(bal<=4.5) h.score+=15;
+    else if(bal<=6.0) h.score+=10;
+
+    if(h.pop<=2) h.score+=10;
+    else if(h.pop<=4) h.score+=7;
+  });
+
+  horses.sort((a,b)=>b.score-a.score);
+
+  let html="";
+  horses.forEach(h=>{
+    let cls="skip", txt="SKIP";
+
+    if(h.score>=85){
+      cls="a-axis";
+      txt="A軸｜ワイド3点 1500円";
+    }else if(
+      h.score>=78 && h.score<=84 &&
+      h.win>=2.8 && h.win<=7.5 &&
+      h.place>=1.4 && h.pop!==1
+    ){
+      cls="b-axis";
+      txt="B軸｜ワイド2点 1000円";
+    }
+
+    html+=`
+    <div class="race ${cls}">
+      馬番${h.num}｜スコア${h.score}
+      <small>${txt}</small>
+    </div>`;
+  });
+
+  result.innerHTML=html;
+}
+
+function record(){
+  const p=+hit.value;
+  if(!p) return alert("払戻額を入力");
+  const logs=JSON.parse(localStorage.getItem("log")||"[]");
+  logs.push({d:new Date().toISOString().slice(0,10), p});
+  localStorage.setItem("log",JSON.stringify(logs));
+  hit.value="";
+  alert("記録しました");
+}
+
+function summary(){
+  const logs=JSON.parse(localStorage.getItem("log")||"[]");
+  const m=new Date().toISOString().slice(0,7);
+  const t=logs.filter(l=>l.d.startsWith(m));
+  const pay=t.reduce((s,l)=>s+l.p,0);
+  alert(`今月\n回数:${t.length}\n回収:${pay.toLocaleString()}円`);
+}
+</script>
+
+</body>
+</html>
