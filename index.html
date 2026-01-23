@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>中央競馬 自動スコアリングツール</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="競馬スコア">
+
+<style>
+body { font-family:sans-serif; background:#fafafa; padding:10px; }
+textarea { width:100%; height:120px; margin-bottom:6px; }
+button { width:100%; padding:14px; font-size:18px; margin-bottom:6px; border-radius:10px; }
+.race { padding:10px; margin-bottom:10px; border-radius:8px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.1);}
+.a-axis { background:#ffdddd; border-left:6px solid #e60000; }
+.b-axis { background:#fff0cc; border-left:6px solid #ff9900; }
+.skip   { background:#f0f0f0; color:#999; }
+.wide { background:#ddf0ff; border-left:6px solid #3399ff; padding:8px; margin-bottom:8px; border-radius:6px; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<h3>① 単勝・複勝データ貼り付け</h3>
+<textarea id="odds" placeholder="netkeiba形式の複数行貼り付け"></textarea>
+
+<h3>② ワイドデータ貼り付け（任意）</h3>
+<textarea id="wide" placeholder="netkeiba形式の複数行貼り付け"></textarea>
+
+<button onclick="calculate()">スコア計算・買い目表示</button>
+<button onclick="clearAll()">クリア</button>
+
+<h3>結果</h3>
+<div id="result"></div>
+
+<hr>
+<h3>的中管理</h3>
+<input type="number" id="hit" placeholder="払戻額入力">
+<button onclick="record()">🎯 的中記録</button>
+<button onclick="summary()">📊 今月の成績</button>
+
+<script>
+function clearAll(){
+  odds.value=""; wide.value=""; result.innerHTML="";
+}
+
+// --- 単勝・複勝複数行対応 ---
+function parseOdds(text){
+  const lines = text.split("\n");
+  let horses=[], buffer=[];
+  lines.forEach(l=>{
+    l=l.trim();
+    if(!l) return;
+    if(!isNaN(l) && buffer.length===0){ buffer.push(l); return; } // 人気
+    if(!isNaN(l) && buffer.length===1){ buffer.push(l); return; } // 馬番
+    if(isNaN(l) && buffer.length===2){ buffer.push(l); return; } // 馬名
+    if(!isNaN(l) && buffer.length===3){ buffer.push(l); return; } // 単勝
+    if(!isNaN(l) && buffer.length===4){ buffer.push(l); }         // 複勝
+    if(buffer.length===5){
+      horses.push({
+        num: buffer[1],
+        name: buffer[2],
+        win: parseFloat(buffer[3]),
+        place: parseFloat(buffer[4]),
+        score:0,
+        pop:0
+      });
+      buffer=[];
+    }
+  });
+  return horses;
+}
+
+// --- ワイドデータ解析 ---
+function parseWide(text){
+  const lines=text.split("\n");
+  let wideArr=[];
+  let buffer=[];
+  lines.forEach(l=>{
+    l=l.trim();
+    if(!l) return;
+    if(!isNaN(l) && buffer.length===0){ buffer.push(l); return; } // 人気
+    if(buffer.length===1 && l.includes("-")){ buffer.push(l); return; } // 組番
+    if(!isNaN(l)){ buffer.push(l); } // オッズ最低
+    if(buffer.length===3){
+      wideArr.push({combo:buffer[1], odds:parseFloat(buffer[2])});
+      buffer=[];
+    }
+  });
+  return wideArr;
+}
+
+// --- スコア計算 ---
+function calculate(){
+  let horses=parseOdds(odds.value);
+  if(horses.length===0){ result.innerHTML="データを認識できません"; return; }
+
+  horses.sort((a,b)=>a.win-b.win);
+  horses.forEach((h,i)=>h.pop=i+1);
+
+  // 単勝断層加点
+  if(horses[2] && horses[2].win >= horses[1].win*1.8){
+    horses[0].score+=40;
+    horses[1].score+=38;
+  }
+
+  horses.forEach(h=>{
+    if(h.place<=1.3) h.score+=30;
+    else if(h.place<=1.6) h.score+=22;
+    else if(h.place<=2.1) h.score+=18;
+    const bal=h.win*h.place;
+    if(bal<=4.5) h.score+=15;
+    else if(bal<=6.0) h.score+=10;
+    if(h.pop<=2) h.score+=10;
+    else if(h.pop<=4) h.score+=7;
+  });
+
+  horses.sort((a,b)=>b.score-a.score);
+
+  // --- 結果出力 ---
+  let html="";
+  horses.forEach(h=>{
+    let cls="skip", txt="SKIP";
+    if(h.score>=85){ cls="a-axis"; txt="A軸｜ワイド3点 1500円"; }
+    else if(h.score>=78 && h.score<=84 && h.win>=2.8 && h.win<=7.5 && h.place>=1.4 && h.pop!==1){ cls="b-axis"; txt="B軸｜ワイド2点 1000円"; }
+    html+=`<div class="race ${cls}">馬番${h.num}｜${h.name}｜スコア${h.score}<br><small>${txt}</small></div>`;
+  });
+
+  // --- ワイド表示 ---
+  let wideArr=parseWide(wide.value);
+  if(wideArr.length>0){
+    html+="<h4>ワイド買い目</h4>";
+    wideArr.forEach(w=>{
+      html+=`<div class="wide">${w.combo}｜オッズ${w.odds}</div>`;
+    });
+  }
+
+  result.innerHTML=html;
+}
+
+// --- 的中管理 ---
+function record(){
+  const p=+hit.value;
+  if(!p) return alert("払戻額を入力");
+  const logs=JSON.parse(localStorage.getItem("log")||"[]");
+  logs.push({d:new Date().toISOString().slice(0,10), p});
+  localStorage.setItem("log",JSON.stringify(logs));
+  hit.value="";
+  alert("記録しました");
+}
+
+function summary(){
+  const logs=JSON.parse(localStorage.getItem("log")||"[]");
+  const m=new Date().toISOString().slice(0,7);
+  const t=logs.filter(l=>l.d.startsWith(m));
+  const pay=t.reduce((s,l)=>s+l.p,0);
+  alert(`今月\n回数:${t.length}\n回収:${pay.toLocaleString()}円`);
+}
+
+</script>
+</body>
+</html>
