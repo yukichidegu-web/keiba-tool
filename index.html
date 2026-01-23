@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>中央競馬 ワイド自動算出ツール</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body { font-family:sans-serif; background:#fafafa; padding:10px; }
+textarea { width:100%; height:150px; margin-bottom:10px; font-size:16px; }
+button { padding:12px; font-size:18px; margin-bottom:10px; width:100%; }
+.race, .wide, .bet { display:block; padding:6px 10px; margin-bottom:6px; border-radius:8px; word-wrap: break-word; white-space: normal; overflow: visible; }
+.a-axis { background:#ffdddd; border-left:6px solid #e60000; }
+.b-axis { background:#fff0cc; border-left:6px solid #ff9900; }
+.skip { background:#f0f0f0; color:#999; }
+.wide { background:#ddf0ff; border-left:6px solid #3399ff; }
+.bet { background:#dfffd6; border-left:6px solid #33cc33; }
+</style>
+</head>
+<body>
+
+<h3>① 単勝・複勝データを貼る</h3>
+<textarea id="oddsText" placeholder="馬番,馬名,単勝,複勝(最後の値)&#10;113,バタール,1.6,1.2"></textarea>
+
+<h3>② ワイドデータを貼る</h3>
+<textarea id="wideText" placeholder="組番,下限オッズ&#10;7-13,3.4"></textarea>
+
+<button onclick="calculate()">解析・スコア表示 + ワイド買い目自動</button>
+<button onclick="clearAll()">全削除</button>
+
+<div id="result"></div>
+
+<script>
+const result = document.getElementById("result");
+
+function clearAll(){
+  document.getElementById("oddsText").value="";
+  document.getElementById("wideText").value="";
+  result.innerHTML="";
+}
+
+// 軸判定用スコア計算（サンプルロジック）
+function calcScore(odds){
+  if(odds<=5) return 90;      // A軸
+  if(odds<=15) return 75;     // B軸
+  return 50;                   // その他
+}
+
+function calculate(){
+  result.innerHTML="";
+  const oddsLines = document.getElementById("oddsText").value.split("\n");
+  const wideLines = document.getElementById("wideText").value.split("\n");
+
+  const horses=[];
+  oddsLines.forEach(line=>{
+    if(!line.trim() || line.toLowerCase().includes("馬番")) return;
+    const parts=line.split(/,|\s+/);
+    if(parts.length<4) return;
+    const [num,name,win,place]=parts;
+    const score=calcScore(parseFloat(win));
+    horses.push({num:parseInt(num),name,win:parseFloat(win),place:parseFloat(place),score});
+  });
+
+  // 馬情報表示
+  horses.forEach(h=>{
+    const cls=h.score>=85?"a-axis":h.score>=70?"b-axis":"skip";
+    const div=document.createElement("div");
+    div.className="race "+cls;
+    div.innerHTML=`${h.num} ${h.name} 単勝:${h.win} 複勝:${h.place} スコア:${h.score}`;
+    result.appendChild(div);
+  });
+
+  // ワイド表示
+  const wideData=[];
+  wideLines.forEach(line=>{
+    if(!line.trim() || line.toLowerCase().includes("組番")) return;
+    const parts=line.split(/,|\s+/);
+    if(parts.length<2) return;
+    const [combStr,odds]=parts;
+    const nums = combStr.split("-").map(n=>parseInt(n)); // ハイフンで分割
+    wideData.push({combStr,nums,odds:parseFloat(odds)});
+    const div=document.createElement("div");
+    div.className="wide";
+    div.innerHTML=`${combStr} 下限オッズ:${odds}`;
+    result.appendChild(div);
+  });
+
+  // 自動ワイド買い目生成
+  const aAxis=horses.filter(h=>h.score>=85);
+  const bAxis=horses.filter(h=>h.score>=70 && h.score<85);
+  const bets=[];
+
+  function findChoices(axisHorse, count){
+    // 馬番が含まれるワイド組を抽出
+    const choices = wideData.filter(w=>w.nums.includes(axisHorse.num))
+                            .sort((a,b)=>a.odds-b.odds)
+                            .slice(0,count);
+    choices.forEach(w=>{
+      bets.push({comb:w.combStr,amt:axisHorse.score>=85?1500:1000});
+    });
+  }
+
+  aAxis.forEach(h=>findChoices(h,3));
+  bAxis.forEach(h=>findChoices(h,2));
+
+  // 買い目表示
+  bets.forEach(b=>{
+    const div=document.createElement("div");
+    div.className="bet";
+    div.innerHTML=`買い目: ${b.comb} 金額:${b.amt}円`;
+    result.appendChild(div);
+  });
+}
+</script>
+
+</body>
+</html>
