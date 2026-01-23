@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>中央競馬 自動スコアリングツール</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="競馬スコア">
+<style>
+body { font-family:sans-serif; background:#fafafa; padding:10px; }
+textarea { width:100%; height:120px; margin-bottom:6px; font-size:14px; }
+button { width:100%; padding:12px; font-size:16px; margin-bottom:6px; border-radius:8px; }
+.race { padding:10px; margin-bottom:10px; border-radius:8px; font-weight:bold; box-shadow:0 2px 4px rgba(0,0,0,0.1);}
+.a-axis { background:#ffdddd; border-left:6px solid #e60000; }
+.b-axis { background:#fff0cc; border-left:6px solid #ff9900; }
+.skip   { background:#f0f0f0; color:#999; }
+.wide { background:#ddf0ff; border-left:6px solid #3399ff; padding:8px; margin-bottom:8px; border-radius:6px; font-weight:bold; }
+</style>
+</head>
+<body>
+
+<h3>① 単勝・複勝データ貼り付け</h3>
+<textarea id="odds" placeholder="人気,馬番,馬名,単勝,複勝(3着払い) を複数行で"></textarea>
+
+<h3>② ワイドデータ貼り付け（任意）</h3>
+<textarea id="wide" placeholder="人気,組番,オッズ を複数行で"></textarea>
+
+<button onclick="calculate()">スコア計算・買い目表示</button>
+<button onclick="clearAll()">クリア</button>
+
+<h3>結果</h3>
+<div id="result"></div>
+
+<script>
+function clearAll(){
+  odds.value=""; wide.value=""; result.innerHTML="";
+}
+
+// --- 単勝・複勝解析 ---
+function parseOdds(text){
+  const lines = text.split("\n").map(l=>l.trim()).filter(l=>l!=="");
+  let horses=[], buffer=[];
+  lines.forEach(l=>{
+    if(!isNaN(l)){ buffer.push(parseFloat(l)); } else { buffer.push(l); }
+    if(buffer.length===5){
+      horses.push({num:buffer[1], name:buffer[2], win:buffer[3], place:buffer[4], score:0});
+      buffer=[];
+    }
+  });
+  return horses;
+}
+
+// --- ワイド解析 ---
+function parseWide(text){
+  const lines=text.split("\n").map(l=>l.trim()).filter(l=>l!=="");
+  let wideArr=[], buffer=[];
+  lines.forEach(l=>{
+    if(!isNaN(l)){ buffer.push(parseFloat(l)); } else if(l.includes("-")){ buffer.push(l); }
+    if(buffer.length===3){ wideArr.push({combo:buffer[1], odds:buffer[0]}); buffer=[]; }
+  });
+  return wideArr;
+}
+
+// --- 推奨ワイド5点選定 ---
+function selectWide(horses, wideArr){
+  let selected=[], A=[], B=[];
+  const axesA = horses.filter(h=>h.score>=78).map(h=>h.num); // A軸
+  const axesB = horses.filter(h=>h.score>=72 && h.score<78).map(h=>h.num); // B軸
+
+  wideArr.forEach(w=>{
+    let nums=w.combo.split("-").map(x=>x.trim());
+    if(axesA.includes(nums[0]) || axesA.includes(nums[1])) A.push({combo:w.combo, odds:w.odds});
+    else if(axesB.includes(nums[0]) || axesB.includes(nums[1])) B.push({combo:w.combo, odds:w.odds});
+  });
+
+  // 下限オッズ1.5〜18
+  A = A.filter(w=>w.odds>=1.5 && w.odds<=18).slice(0,3);
+  B = B.filter(w=>w.odds>=1.5 && w.odds<=18).slice(0,2);
+
+  // 確率を簡易計算
+  A.forEach(w=>w.prob=(4/w.odds*100).toFixed(1)+'%'); // A軸平均4倍
+  B.forEach(w=>w.prob=(2/w.odds*100).toFixed(1)+'%'); // B軸平均7倍換算でざっくり
+
+  selected = A.concat(B);
+  return selected;
+}
+
+// --- スコア計算 ---
+function calculate(){
+  let horses=parseOdds(odds.value);
+  if(horses.length===0){ result.innerHTML="データを認識できません"; return; }
+
+  horses.sort((a,b)=>a.win-b.win);
+  horses.forEach((h,i)=>h.score+= (h.place<=1.3?30:(h.place<=1.6?22:(h.place<=2.1?18:0)));
+
+  // スコア追加（単勝×複勝簡易）
+  horses.forEach(h=>{
+    let bal = h.win*h.place;
+    if(bal<=4.5) h.score+=15; else if(bal<=6.0) h.score+=10;
+    if(h.win<=2) h.score+=10; else if(h.win<=4) h.score+=7;
+  });
+
+  horses.sort((a,b)=>b.score-a.score);
+
+  let html="";
+  horses.forEach(h=>{
+    let cls="skip", txt="SKIP";
+    if(h.score>=78){ cls="a-axis"; txt="A軸｜3点 1500円"; }
+    else if(h.score>=72){ cls="b-axis"; txt="B軸｜2点 1000円"; }
+    html+=`<div class="race ${cls}">馬番${h.num}｜${h.name}｜スコア${h.score}<br><small>${txt}</small></div>`;
+  });
+
+  // ワイド買い目
+  let wideArr=parseWide(wide.value);
+  if(wideArr.length>0){
+    const topWide = selectWide(horses, wideArr);
+    html+="<h4>推奨ワイド5点（確率付き）</h4>";
+    topWide.forEach(w=>{
+      html+=`<div class="wide">${w.combo}｜オッズ${w.odds}｜当たる確率${w.prob}</div>`;
+    });
+  }
+
+  result.innerHTML=html;
+}
+</script>
+</body>
+</html>
