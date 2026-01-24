@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ワイド自動判定ツール（確率表示）</title>
+<style>
+  body { font-family: sans-serif; padding: 20px; max-width: 720px; }
+  textarea { width: 100%; height: 180px; font-family: monospace; }
+  button { padding: 10px 20px; margin: 10px 0; }
+  pre { background: #f2f2f2; padding: 12px; white-space: pre-wrap; }
+  .buy { color: green; font-weight: bold; }
+  .skip { color: red; font-weight: bold; }
+</style>
+</head>
+<body>
+
+<h2>ワイド自動判定ツール（的中確率つき）</h2>
+
+<textarea id="rawData" placeholder="ここに表形式データを貼り付け"></textarea>
+
+<h3>ワイドオッズ（下限）</h3>
+<textarea id="wideOdds" placeholder="例：
+5-1 4.8
+5-9 5.2"></textarea>
+
+<button onclick="run()">判定する</button>
+
+<pre id="result"></pre>
+
+<script>
+function axisProb(odd) {
+  if (odd <= 1.9) return 0.75;
+  if (odd <= 2.9) return 0.65;
+  if (odd <= 3.9) return 0.55;
+  return 0.45;
+}
+
+function run() {
+  const raw = document.getElementById("rawData").value.trim();
+  const wideText = document.getElementById("wideOdds").value.trim();
+  if (!raw || !wideText) return alert("データ不足");
+
+  const lines = raw.split(/\r?\n/);
+  let horses = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\d+$/.test(lines[i])) {
+      const num = lines[i];
+      const name = lines[i + 1];
+      const odd = parseFloat(lines[i + 2]);
+      if (name && !isNaN(odd)) {
+        horses.push({ num, name, odd });
+        i += 2;
+      }
+    }
+  }
+
+  horses.sort((a, b) => a.odd - b.odd);
+
+  let axis = horses[0];
+  for (let i = 0; i < horses.length - 1; i++) {
+    if (horses[i + 1].odd / horses[i].odd >= 2) {
+      axis = horses[i];
+      break;
+    }
+  }
+
+  const axisP = axisProb(axis.odd);
+
+  let widePairs = [];
+  let partnerPs = [0.55, 0.45];
+
+  for (let i = 0; i < horses.length && widePairs.length < 2; i++) {
+    if (horses[i].num !== axis.num) {
+      widePairs.push({
+        pair: `${axis.num}-${horses[i].num}`,
+        prob: axisP * partnerPs[widePairs.length]
+      });
+    }
+  }
+
+  let oddsMap = {};
+  wideText.split(/\r?\n/).forEach(l => {
+    let p = l.split(/\s+/);
+    if (p.length === 2) oddsMap[p[0]] = parseFloat(p[1]);
+  });
+
+  let canBuy = true;
+  widePairs.forEach(w => {
+    if (!oddsMap[w.pair] || oddsMap[w.pair] < 4.5) canBuy = false;
+  });
+
+  let out = `軸馬: ${axis.num} ${axis.name}（3着内率 ${(axisP*100).toFixed(0)}%）\n\n`;
+  out += `ワイド買い目:\n`;
+
+  widePairs.forEach(w => {
+    out += `  ${w.pair}｜下限 ${oddsMap[w.pair]}｜的中率 ${(w.prob*100).toFixed(1)}%\n`;
+  });
+
+  if (!canBuy) {
+    out += `\n【判定】見送り`;
+    result.className = "skip";
+  } else {
+    const stake = Math.floor(2000 / widePairs.length);
+    out += `\n【判定】買い ✅\n1点 ${stake}円（合計 ${stake*widePairs.length}円）`;
+    result.className = "buy";
+  }
+
+  result.textContent = out;
+}
+</script>
+
+</body>
+</html>
