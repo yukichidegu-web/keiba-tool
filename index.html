@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>ワイド期待値最大化（断層対応）</title>
+<style>
+body { font-family: sans-serif; max-width: 700px; margin: 20px auto; }
+textarea { width: 100%; }
+table { border-collapse: collapse; margin-top: 10px; }
+td, th { border: 1px solid #ccc; padding: 5px 10px; text-align: center; }
+</style>
+</head>
+<body>
+
+<h2>ワイド期待値最大化（オッズ断層対応）</h2>
+
+<p>1点購入額: <input id="betAmount" type="number" value="500"></p>
+
+<p>コピーしたオッズ表を貼り付け（枠番 人気 馬番 馬名 オッズ）:</p>
+<textarea id="oddsData" rows="8">1 1 1 イサチルクイーン 2.0
+2 2 2 ローズプリンセス 3.0
+3 3 3 タートルインメイ 4.0
+4 4 4 レイナロハル 5.0
+5 5 5 シンフォニー 6.0</textarea>
+
+<button onclick="calcOptimal()">期待値最大計算</button>
+
+<h3>結果</h3>
+<p id="result"></p>
+
+<script>
+// 人気から的中率を自動算出
+function calcHitRate(rank){
+    switch(rank){
+        case 1: return 0.80;
+        case 2: return 0.70;
+        case 3: return 0.60;
+        case 4: return 0.50;
+        case 5: return 0.35;
+        case 6: return 0.20;
+        default: return 0.10;
+    }
+}
+
+// オッズ断層判定：倍以上のジャンプがあるところの直下を軸馬候補とする
+function findAxisCandidates(horses){
+    let candidates = [];
+    for(let i=0;i<horses.length-1;i++){
+        let ratio = horses[i+1].odds / horses[i].odds;
+        if(ratio >= 2){ // 断層の倍率は2倍以上で判定
+            candidates.push(horses[i]); // 直下の馬を軸候補に
+        }
+    }
+    if(candidates.length === 0){
+        candidates.push(horses[0]); // 断層なしは1人気を軸
+    }
+    return candidates;
+}
+
+function calcOptimal(){
+    const bet = parseFloat(document.getElementById("betAmount").value);
+    const lines = document.getElementById("oddsData").value.trim().split('\n');
+    let horses = [];
+
+    for(let line of lines){
+        const parts = line.trim().split(/\s+/);
+        let rank = parseInt(parts[1]);
+        horses.push({
+            name: parts[3],
+            odds: parseFloat(parts[4]),
+            hit: calcHitRate(rank)
+        });
+    }
+
+    // オッズ順にソート（断層判定用）
+    horses.sort((a,b)=>a.odds-b.odds);
+
+    // 軸馬候補を断層判定で取得
+    const axisCandidates = findAxisCandidates(horses);
+
+    let bestEV = -Infinity;
+    let bestAxis = null;
+    let bestFlow = [];
+
+    for(let axis of axisCandidates){
+        let others = horses.filter(h => h.name !== axis.name);
+        for(let i=0;i<others.length-2;i++){
+            for(let j=i+1;j<others.length-1;j++){
+                for(let k=j+1;k<others.length;k++){
+                    let ev = 0;
+                    ev += axis.hit * others[i].hit * others[i].odds * bet;
+                    ev += axis.hit * others[j].hit * others[j].odds * bet;
+                    ev += axis.hit * others[k].hit * others[k].odds * bet;
+
+                    if(ev > bestEV){
+                        bestEV = ev;
+                        bestAxis = axis;
+                        bestFlow = [others[i], others[j], others[k]];
+                    }
+                }
+            }
+        }
+    }
+
+    const totalBet = bet * 3;
+    const netEV = (bestEV - totalBet).toFixed(0);
+
+    if(bestAxis){
+        document.getElementById("result").innerHTML = `
+            <p><strong>最適軸馬（断層直下判定）:</strong> ${bestAxis.name}（オッズ: ${bestAxis.odds}）</p>
+            <p><strong>最適流し馬3点:</strong> ${bestFlow.map(h=>h.name+"("+h.odds+")").join(', ')}</p>
+            <p><strong>総期待値:</strong> ${bestEV.toFixed(0)}円</p>
+            <p>総購入額: ${totalBet}円 → <strong>EV - 購入額: ${netEV}円</strong></p>
+        `;
+    } else {
+        document.getElementById("result").innerHTML = `<p>軸馬候補が存在しません。</p>`;
+    }
+}
+</script>
+
+</body>
+</html>
