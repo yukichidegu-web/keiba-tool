@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>2番人気ワイド完全自動判定（最終）</title>
+<style>
+body {
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  background:#f2f2f7;
+  margin:0;
+  padding:16px;
+}
+h1 { font-size:18px; margin-bottom:10px; }
+label { font-weight:600; font-size:14px; }
+textarea,input {
+  width:100%;
+  font-size:16px;
+  padding:10px;
+  margin:6px 0 12px;
+  border-radius:8px;
+  border:1px solid #ccc;
+}
+button {
+  width:100%;
+  padding:14px;
+  font-size:18px;
+  border:none;
+  border-radius:10px;
+  background:#007aff;
+  color:#fff;
+}
+.result {
+  margin-top:14px;
+  padding:14px;
+  background:#fff;
+  border-radius:10px;
+  line-height:1.6;
+}
+.buy { color:#d70015; font-weight:700; }
+.nobuy { color:#555; }
+.small { font-size:13px; color:#666; }
+.log { margin-top:12px; font-size:13px; }
+</style>
+</head>
+
+<body>
+
+<h1>🏇 2番人気ワイド｜完全自動判定（最終）</h1>
+
+<label>単勝オッズ（人気順・改行）</label>
+<textarea id="winOdds" rows="8"></textarea>
+
+<label>ワイド下限オッズ</label>
+<input id="wide26" type="number" step="0.1" placeholder="2-6">
+<input id="wide27" type="number" step="0.1" placeholder="2-7">
+
+<label>投資金額（円）</label>
+<input id="bankroll" type="number" placeholder="例：1000">
+
+<button onclick="judge()">判定する</button>
+
+<div id="result" class="result"></div>
+<div id="history" class="log"></div>
+
+<script>
+function judge() {
+  const winOdds = document.getElementById("winOdds").value
+    .split("\n").map(v=>parseFloat(v)).filter(v=>!isNaN(v));
+  const wide26 = parseFloat(document.getElementById("wide26").value);
+  const wide27 = parseFloat(document.getElementById("wide27").value);
+  const bankroll = parseInt(document.getElementById("bankroll").value || 0);
+  const result = document.getElementById("result");
+
+  if (winOdds.length < 7) {
+    result.innerHTML = "<span class='nobuy'>NO-BUY：単勝オッズ不足</span>";
+    return;
+  }
+
+  // 2番人気チェック
+  const axis = winOdds[1];
+  if (axis < 3.5 || axis > 6.0) {
+    result.innerHTML = "<span class='nobuy'>NO-BUY：2番人気の単勝が条件外</span>";
+    return;
+  }
+
+  // 断層検出（1.8倍）
+  let faultIndex = -1;
+  for (let i = 0; i < winOdds.length - 1; i++) {
+    if (winOdds[i + 1] / winOdds[i] >= 1.8) {
+      faultIndex = i + 1; // 下側index
+      break;
+    }
+  }
+
+  if (faultIndex === -1) {
+    result.innerHTML = "<span class='nobuy'>NO-BUY：断層なし</span>";
+    return;
+  }
+
+  // ★ 最重要：6・7に関係ない断層は即ブロック ★
+  if (![5,6,7].includes(faultIndex)) {
+    result.innerHTML =
+      "<span class='nobuy'>NO-BUY：断層が6・7番人気に関係なし</span><br>" +
+      "<span class='small'>断層位置：" + (faultIndex+1) + "→" + (faultIndex+2) + "番人気</span>";
+    return;
+  }
+
+  // ワイド下限チェック
+  let buys = [];
+  if (wide26 >= 10) buys.push("2-6");
+  if (wide27 >= 12) buys.push("2-7");
+
+  if (buys.length === 0) {
+    result.innerHTML = "<span class='nobuy'>NO-BUY：ワイド下限不足</span>";
+    return;
+  }
+
+  // 配分決定
+  let ratio6 = 0.5, ratio7 = 0.5;
+  if (faultIndex === 5) { ratio6=0.6; ratio7=0.4; } // 5→6
+  if (faultIndex === 6) { ratio6=0.7; ratio7=0.3; } // 6→7
+  if (faultIndex === 7) { ratio6=0.4; ratio7=0.6; } // 7→8
+
+  // 合算平均オッズ
+  let sum=0,count=0;
+  if (buys.includes("2-6")) { sum+=wide26; count++; }
+  if (buys.includes("2-7")) { sum+=wide27; count++; }
+  const avg = sum/count;
+
+  if (avg < 11.0) {
+    result.innerHTML = "<span class='nobuy'>NO-BUY：合算期待値不足</span>";
+    return;
+  }
+
+  // 金額配分
+  let bet6=0, bet7=0;
+  if (bankroll > 0) {
+    bet6 = buys.includes("2-6") ? Math.round(bankroll * ratio6 / 100) * 100 : 0;
+    bet7 = buys.includes("2-7") ? bankroll - bet6 : 0;
+  }
+
+  result.innerHTML =
+    "<span class='buy'>BUY：" + buys.join("＋") + "</span><br>" +
+    "断層位置：" + (faultIndex+1) + "→" + (faultIndex+2) + "番人気<br>" +
+    "平均下限オッズ：" + avg.toFixed(1) + "<br>" +
+    "配分：2-6 " + Math.round(ratio6*100) + "% / 2-7 " + Math.round(ratio7*100) + "%<br>" +
+    (bankroll>0 ? "購入金額：2-6 " + bet6 + "円 / 2-7 " + bet7 + "円" : "") +
+    "<div class='small'>※ 条件：3.5〜6.0倍・断層1.8倍・下限10/12・合算11</div>";
+
+  saveHistory(result.innerText);
+}
+
+function saveHistory(text){
+  let h = JSON.parse(localStorage.getItem("wideLog")||"[]");
+  h.unshift(new Date().toLocaleString()+"｜"+text);
+  if (h.length>10) h.pop();
+  localStorage.setItem("wideLog",JSON.stringify(h));
+  renderHistory();
+}
+
+function renderHistory(){
+  let h = JSON.parse(localStorage.getItem("wideLog")||"[]");
+  document.getElementById("history").innerHTML =
+    "<b>直近ログ</b><br>"+h.join("<br><br>");
+}
+renderHistory();
+</script>
+
+</body>
+</html>
