@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ワイド完全版ツール</title>
+<style>
+body{
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    background:#111;
+    color:#fff;
+    padding:15px;
+}
+h2{margin-top:20px;}
+input,textarea,button{
+    width:100%;
+    padding:10px;
+    margin-top:8px;
+    border-radius:8px;
+    border:none;
+    font-size:16px;
+}
+button{font-weight:bold;}
+#judgeBtn{background:#2ecc71;color:#000;}
+#clearBtn{background:#555;color:#fff;}
+.result{
+    margin-top:15px;
+    padding:12px;
+    border-radius:8px;
+    background:#222;
+}
+.alert{color:#ff4d4d;}
+.safe{color:#2ecc71;}
+.highlight{color:#f1c40f;}
+</style>
+</head>
+<body>
+
+<h1>ワイド 月安定完全版</h1>
+
+<h2>単勝オッズ（改行・空白OK）</h2>
+<textarea id="tansho" placeholder="そのまま貼り付けOK"></textarea>
+
+<h2>買うワイドオッズ（3点）</h2>
+<input id="wide1" placeholder="例 6.5">
+<input id="wide2" placeholder="例 7.2">
+<input id="wide3" placeholder="例 8.0">
+
+<button id="judgeBtn" onclick="judge()">判定する</button>
+<button id="clearBtn" onclick="clearForm()">クリア</button>
+
+<div class="result" id="output"></div>
+
+<script>
+
+const BASE_HIT = 0.30;
+const MIN_EXPECT = 0.6;
+const DANSO_MIN = 2.2;
+const TOP_RANGE = 6; // 上位6人気以内で判定
+
+let data = JSON.parse(localStorage.getItem("wideData")) || {
+    invest:0,
+    return:0,
+    loseStreak:0
+};
+
+function parseOdds(text){
+    return text
+        .split(/[\s,]+/)
+        .map(v => parseFloat(v))
+        .filter(v => !isNaN(v));
+}
+
+function judge(){
+
+    if(data.return - data.invest <= -20000){
+        document.getElementById("output").innerHTML =
+        "<span class='alert'>今月-20,000円到達。強制停止。</span>";
+        return;
+    }
+
+    let tansho = parseOdds(document.getElementById("tansho").value);
+
+    if(tansho.length < 6){
+        document.getElementById("output").innerHTML =
+        "<span class='alert'>単勝オッズ不足（6頭以上必要）</span>";
+        return;
+    }
+
+    // 上位6人気のみ抽出
+    let topOdds = tansho.slice(0, TOP_RANGE);
+
+    let maxGap = 0;
+    let gapIndex = 0;
+
+    for(let i=0;i<topOdds.length-1;i++){
+        let gap = topOdds[i+1] - topOdds[i];
+        if(gap > maxGap){
+            maxGap = gap;
+            gapIndex = i;
+        }
+    }
+
+    if(maxGap < DANSO_MIN){
+        document.getElementById("output").innerHTML =
+        "<span class='alert'>有効断層なし（"+maxGap.toFixed(2)+"）見送り</span>";
+        return;
+    }
+
+    let axisPopularity = gapIndex + 1; // 断層直下人気
+
+    let wides = [
+        Number(document.getElementById("wide1").value),
+        Number(document.getElementById("wide2").value),
+        Number(document.getElementById("wide3").value)
+    ];
+
+    let results = "";
+
+    wides.forEach((odd,i)=>{
+        if(!odd) return;
+        let expect = BASE_HIT * odd - 1;
+        if(expect >= MIN_EXPECT){
+            results += "買い目"+(i+1)+" 期待値："+expect.toFixed(2)+"<br>";
+        }else{
+            results += "買い目"+(i+1)+" 見送り<br>";
+        }
+    });
+
+    let profit = data.return - data.invest;
+
+    let status = (profit <= -10000)
+        ? "<span class='alert'>注意モード（-10,000円超）</span>"
+        : "<span class='safe'>通常運転</span>";
+
+    document.getElementById("output").innerHTML =
+        "有効断層："+maxGap.toFixed(2)+"<br>"
+        + "<span class='highlight'>軸候補："+axisPopularity+"番人気</span><br><br>"
+        + results + "<br>"
+        + "今月収支："+profit+"円<br>"
+        + status;
+}
+
+function clearForm(){
+    document.getElementById("tansho").value = "";
+    document.getElementById("wide1").value = "";
+    document.getElementById("wide2").value = "";
+    document.getElementById("wide3").value = "";
+    document.getElementById("output").innerHTML = "";
+}
+
+</script>
+
+</body>
+</html>
