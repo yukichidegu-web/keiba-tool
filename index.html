@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>中央競馬ワイドEVプロ150%（最終版）</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#111;color:#fff;padding:15px}
+input,button{width:100%;padding:10px;margin:6px 0;border-radius:8px;border:none;font-size:16px}
+button{background:#00c853;color:#000;font-weight:bold}
+.result{margin-top:15px;padding:12px;background:#222;border-radius:10px}
+.info{font-size:13px;background:#1b1b1b;padding:10px;border-radius:8px;margin-bottom:12px;line-height:1.6}
+h3{margin-top:20px}
+</style>
+</head>
+<body>
+
+<h2>中央競馬 ワイドEVプロ（月150%仕様・完成）</h2>
+
+<div class="info">
+■ 単勝オッズを上位から入力<br>
+■ 断層1.8倍以上で作動<br>
+■ 2.5倍以上は強断層（攻撃モード）<br>
+■ レース予算：最大1500円（自動配分）
+</div>
+
+<h3>単勝オッズ（1〜7番人気）</h3>
+<input type="number" id="t1" placeholder="1番人気">
+<input type="number" id="t2" placeholder="2番人気">
+<input type="number" id="t3" placeholder="3番人気">
+<input type="number" id="t4" placeholder="4番人気">
+<input type="number" id="t5" placeholder="5番人気">
+<input type="number" id="t6" placeholder="6番人気">
+<input type="number" id="t7" placeholder="7番人気">
+
+<h3>ワイドオッズ</h3>
+<input type="number" id="w25" placeholder="2-5">
+<input type="number" id="w26" placeholder="2-6">
+<input type="number" id="w27" placeholder="2-7">
+<input type="number" id="w35" placeholder="3-5">
+<input type="number" id="w36" placeholder="3-6">
+<input type="number" id="w37" placeholder="3-7">
+
+<button onclick="calculate()">判定</button>
+<button onclick="clearAll()" style="background:#ff5252;color:#fff;">クリア</button>
+
+<div class="result" id="output"></div>
+
+<script>
+
+// ===== 人気別3着内率（中央平均）=====
+const placeRate = {
+1:0.65,2:0.55,3:0.45,4:0.38,
+5:0.30,6:0.24,7:0.20
+};
+
+const maxBudget = 1500;
+const decay = 0.85;       // 同時確率減衰
+const normalEV = 1.15;    // 通常BUY基準
+const strongEV = 1.05;    // 強断層BUY基準
+
+function calculate(){
+
+let odds={
+1:parseFloat(t1.value),
+2:parseFloat(t2.value),
+3:parseFloat(t3.value),
+4:parseFloat(t4.value),
+5:parseFloat(t5.value),
+6:parseFloat(t6.value),
+7:parseFloat(t7.value)
+};
+
+// ===== 断層判定（1.8倍以上）=====
+let fault=null;
+let strong=false;
+
+for(let i=2;i<=7;i++){
+if(!odds[i-1]||!odds[i])continue;
+let ratio=odds[i]/odds[i-1];
+
+if(ratio>=1.8){
+fault=i-1;
+if(ratio>=2.5) strong=true;
+break;
+}
+}
+
+if(!fault){
+output.innerHTML="断層なし → 見送り";
+return;
+}
+
+let axis=fault;
+let threshold=strong?strongEV:normalEV;
+
+// ===== ワイド入力 =====
+let wide={
+"2-5":parseFloat(w25.value),
+"2-6":parseFloat(w26.value),
+"2-7":parseFloat(w27.value),
+"3-5":parseFloat(w35.value),
+"3-6":parseFloat(w36.value),
+"3-7":parseFloat(w37.value)
+};
+
+let bets=[];
+let totalEV=0;
+
+for(let key in wide){
+if(!wide[key])continue;
+let [a,b]=key.split("-").map(Number);
+if(a!==axis)continue;
+
+let hit=placeRate[a]*placeRate[b]*decay;
+let ev=hit*wide[key];
+
+if(ev>=threshold){
+bets.push({pair:key,ev:ev});
+totalEV+=ev;
+}
+}
+
+if(bets.length===0){
+output.innerHTML="EV不足 → 見送り";
+return;
+}
+
+bets.sort((a,b)=>b.ev-a.ev);
+
+let result="<b>採用軸：</b>"+axis+"番人気<br>";
+result+="<b>モード：</b>"+(strong?"強断層（攻撃）":"通常断層")+"<br><br>";
+
+let totalReturn=0;
+let totalInvest=0;
+
+bets.forEach(b=>{
+let stake=Math.round((b.ev/totalEV)*maxBudget/100)*100;
+if(stake<100) stake=100;
+let expected=stake*b.ev;
+totalReturn+=expected;
+totalInvest+=stake;
+result+=b.pair+" | EV:"+b.ev.toFixed(2)+" | 投資:"+stake+"円<br>";
+});
+
+let roi=(totalReturn/totalInvest)*100;
+
+result+="<br><b>レース理論回収率：</b>"+roi.toFixed(1)+"%<br>";
+result+="<b>判定：BUY</b>";
+
+output.innerHTML=result;
+}
+
+function clearAll(){
+document.querySelectorAll("input").forEach(i=>i.value="");
+output.innerHTML="";
+}
+
+</script>
+
+</body>
+</html>
