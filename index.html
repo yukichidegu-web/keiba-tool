@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>枠連 断層スコア 最終完成版</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f5;padding:15px}
+textarea,select,button{width:100%;padding:10px;margin-top:10px;font-size:16px}
+.result{background:#fff;padding:15px;margin-top:15px;border-radius:8px}
+.buy{color:green;font-weight:bold}
+.cut{color:orange;font-weight:bold}
+.skip{color:red;font-weight:bold}
+</style>
+</head>
+<body>
+
+<h2>枠連 断層スコア 最終完成版</h2>
+
+<select id="track">
+<option value="neutral">開催場選択</option>
+<option value="nakayama">中山</option>
+<option value="tokyo">東京</option>
+<option value="kyoto">京都</option>
+<option value="hanshin">阪神</option>
+<option value="chukyo">中京</option>
+<option value="kokura">小倉</option>
+<option value="niigata">新潟</option>
+<option value="fukushima">福島</option>
+<option value="sapporo">札幌</option>
+<option value="hakodate">函館</option>
+</select>
+
+<textarea id="odds" rows="12" placeholder="単勝オッズを馬番順に貼り付け"></textarea>
+
+<button onclick="analyze()">解析</button>
+<button onclick="clearAll()">クリア</button>
+
+<div id="output" class="result"></div>
+<div id="oddsInput" class="result"></div>
+<div id="finalResult" class="result"></div>
+
+<script>
+
+let buyCandidates=[]
+let idealOddsGlobal=0
+let axisOddsGlobal=0
+let maxGapGlobal=0
+let totalBudget=1500
+let mode="C"
+
+const trackBias={
+neutral:0,
+nakayama:0.3,tokyo:0.2,kyoto:0.1,hanshin:0.2,
+chukyo:0.1,kokura:0.3,niigata:-0.1,
+fukushima:0.2,sapporo:0.1,hakodate:0.2
+}
+
+function analyze(){
+
+let raw=document.getElementById("odds").value.trim().split(/\s+/).map(Number)
+let track=document.getElementById("track").value
+let n=raw.length
+
+if(n<14){alert("14頭未満は見送り");return}
+
+let sorted=[...raw].sort((a,b)=>a-b)
+
+maxGapGlobal=0
+let gapPos=0
+for(let i=0;i<sorted.length-1;i++){
+let gap=sorted[i+1]/sorted[i]
+if(gap>maxGapGlobal){maxGapGlobal=gap;gapPos=i}
+}
+
+if(maxGapGlobal<2.2 || gapPos>4){
+alert("断層条件未達 → 見送り")
+return
+}
+
+if(maxGapGlobal>=2.8) mode="A"
+else if(maxGapGlobal>=2.5) mode="B"
+else mode="C"
+
+axisOddsGlobal=sorted[gapPos]
+let axisIndex=raw.indexOf(axisOddsGlobal)
+let frame=Math.floor(axisIndex/2)+1
+
+let top6=sorted.slice(0,6)
+let candidates=[]
+
+for(let o of top6){
+let idx=raw.indexOf(o)
+let f=Math.floor(idx/2)+1
+if(f!==frame) candidates.push(f)
+}
+
+candidates=[...new Set(candidates)].slice(0,2)
+
+idealOddsGlobal=18 + trackBias[track]
+
+buyCandidates=[]
+for(let f of candidates){
+buyCandidates.push(frame+"-"+f)
+}
+
+let html=`
+総頭数：${n}<br>
+断層値：${maxGapGlobal.toFixed(2)}<br>
+断層位置：${gapPos+1}人気<br>
+MODE ${mode}<br>
+理想オッズ：${idealOddsGlobal.toFixed(1)}倍以上<br>
+軸枠：${frame}<br>
+買い目候補：${buyCandidates.join(" / ")}
+`
+
+document.getElementById("output").innerHTML=html
+generateOddsInput()
+}
+
+function generateOddsInput(){
+let html="<h3>実際の枠連オッズ入力</h3>"
+for(let b of buyCandidates){
+html+=`${b} <select id="real_${b}">`
+for(let i=10;i<=500;i++){
+let val=(i/10).toFixed(1)
+html+=`<option value="${val}">${val}</option>`
+}
+html+="</select><br><br>"
+}
+html+=`<button onclick="recalculate()">再計算</button>`
+document.getElementById("oddsInput").innerHTML=html
+}
+
+function recalculate(){
+
+let modeCap = mode=="A"?1500:mode=="B"?1300:1000
+let resultHTML=""
+let totalUsed=0
+
+for(let b of buyCandidates){
+
+let real=parseFloat(document.getElementById("real_"+b).value)
+let ratio=real/idealOddsGlobal
+let investRate=0
+
+if(ratio>=1.6) investRate=0.75
+else if(ratio>=1.2) investRate=0.65
+else if(ratio>=0.8) investRate=0.45
+else if(ratio>=0.6) investRate=0.25
+else investRate=0
+
+if(axisOddsGlobal<=1.7) investRate*=0.6
+else if(axisOddsGlobal<=2.0) investRate*=0.8
+
+if(maxGapGlobal<2.5 && ratio>1.8) investRate*=0.85
+
+let money=Math.floor(modeCap*investRate)
+
+if(mode=="C"){
+if(real>50) money=Math.min(money,500)
+else if(real>35) money=Math.min(money,600)
+else if(real>20) money=Math.min(money,900)
+}
+
+totalUsed+=money
+
+let cls=money>=700?"buy":money>=400?"cut":"skip"
+let label=money>0?(money>=700?"購入":"抑え"):"見送り"
+
+resultHTML+=`${b} | 実オッズ:${real}倍 | 乖離率:${ratio.toFixed(2)} → <span class="${cls}">${label}</span> | 掛金:${money}円<br>`
+}
+
+resultHTML+=`<br>総掛金合計：${totalUsed}円<br>温存資金：${modeCap-totalUsed}円`
+
+document.getElementById("finalResult").innerHTML=resultHTML
+}
+
+function clearAll(){
+document.getElementById("odds").value=""
+document.getElementById("output").innerHTML=""
+document.getElementById("oddsInput").innerHTML=""
+document.getElementById("finalResult").innerHTML=""
+}
+
+</script>
+</body>
+</html>
