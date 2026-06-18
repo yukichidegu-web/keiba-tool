@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ワイド期待値チェッカー</title>
+
+<style>
+*{
+    box-sizing:border-box;
+}
+
+body{
+    margin:0;
+    background:#111;
+    color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+    padding:15px;
+}
+
+h1{
+    text-align:center;
+    font-size:24px;
+    margin-bottom:20px;
+}
+
+select{
+    width:100%;
+    font-size:20px;
+    padding:14px;
+    border:none;
+    border-radius:12px;
+    background:#222;
+    color:#fff;
+    margin-bottom:20px;
+}
+
+.card{
+    background:#1d1d1d;
+    border-radius:14px;
+    padding:15px;
+    margin-bottom:12px;
+}
+
+.name{
+    font-size:20px;
+    font-weight:bold;
+    margin-bottom:10px;
+}
+
+.line{
+    display:flex;
+    justify-content:space-between;
+    margin:6px 0;
+}
+
+.ev1{
+    color:#4CAF50;
+    font-weight:bold;
+}
+
+.ev12{
+    color:#4FC3F7;
+    font-weight:bold;
+}
+
+.ev15{
+    color:#FFD54F;
+    font-weight:bold;
+}
+
+.footer{
+    margin-top:20px;
+    color:#aaa;
+    font-size:12px;
+    text-align:center;
+}
+</style>
+</head>
+<body>
+
+<h1>ワイド期待値チェッカー</h1>
+
+<select id="jockey"></select>
+
+<div id="result"></div>
+
+<div class="footer">
+EV1.0 = 損益分岐ライン<br>
+EV1.2 = 積極購入ライン<br>
+EV1.5 = 高期待値ライン
+</div>
+
+<script>
+
+const jockeys = {
+ "ルメール":0.605,
+ "岩田望来":0.415,
+ "松山弘平":0.363,
+ "川田将雅":0.545,
+ "横山武史":0.374,
+ "西村淳也":0.365,
+ "丹内祐次":0.267,
+ "戸崎圭太":0.391,
+ "坂井瑠星":0.390,
+ "鮫島克駿":0.285
+};
+
+const select = document.getElementById("jockey");
+
+Object.keys(jockeys).forEach(name=>{
+    const option=document.createElement("option");
+    option.value=name;
+    option.textContent=name;
+    select.appendChild(option);
+});
+
+function draw(){
+
+    const base = select.value;
+    const baseRate = jockeys[base];
+
+    let list=[];
+
+    Object.entries(jockeys).forEach(([name,rate])=>{
+
+        if(name===base) return;
+
+        const hit = baseRate * rate;
+
+        list.push({
+            name:name,
+            ev1:(1/hit),
+            ev12:(1.2/hit),
+            ev15:(1.5/hit)
+        });
+    });
+
+    list.sort((a,b)=>a.ev1-b.ev1);
+
+    let html="";
+
+    list.forEach(item=>{
+
+        html += `
+        <div class="card">
+
+            <div class="name">
+            ${base} × ${item.name}
+            </div>
+
+            <div class="line">
+                <span>EV1.0</span>
+                <span class="ev1">${item.ev1.toFixed(1)}倍以上</span>
+            </div>
+
+            <div class="line">
+                <span>EV1.2</span>
+                <span class="ev12">${item.ev12.toFixed(1)}倍以上</span>
+            </div>
+
+            <div class="line">
+                <span>EV1.5</span>
+                <span class="ev15">${item.ev15.toFixed(1)}倍以上</span>
+            </div>
+
+        </div>
+        `;
+    });
+
+    document.getElementById("result").innerHTML = html;
+}
+
+select.selectedIndex = 0;
+draw();
+
+select.addEventListener("change",draw);
+
+</script>
+
+</body>
+</html>
